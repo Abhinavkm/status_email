@@ -3,14 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Voice Chat with Transcript</title>
+  <title>Voice Chat with Audio</title>
   <style>
     body {
       margin: 0;
       font-family: Arial, sans-serif;
       background-color: #e5ddd5;
     }
-
     .chat-container {
       max-width: 480px;
       margin: auto;
@@ -23,7 +22,6 @@
       overflow: hidden;
       box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
     }
-
     .chat-header {
       background-color: #075e54;
       color: white;
@@ -33,7 +31,6 @@
       align-items: center;
       gap: 10px;
     }
-
     .chat-header img {
       border-radius: 50%;
       width: 40px;
@@ -41,7 +38,6 @@
       object-fit: cover;
       border: 2px solid #fff;
     }
-
     .chat-messages {
       flex: 1;
       padding: 10px;
@@ -49,7 +45,6 @@
       background-image: url('https://wallpapersok.com/images/high/whatsapp-chat-letters-and-symbols-frohqsll7jrmil09.webp');
       background-size: contain;
     }
-
     .message {
       background-color: #dcf8c6;
       padding: 10px;
@@ -60,12 +55,10 @@
       box-shadow: 0 1px 2px rgba(0,0,0,0.2);
       position: relative;
     }
-
     .message audio {
       display: block;
       margin-top: 5px;
     }
-
     .chat-input {
       display: flex;
       align-items: center;
@@ -73,7 +66,6 @@
       background-color: #f0f0f0;
       border-top: 1px solid #ccc;
     }
-
     .chat-input input[type="text"] {
       flex: 1;
       padding: 10px;
@@ -82,7 +74,6 @@
       outline: none;
       margin-right: 10px;
     }
-
     .chat-input button {
       background-color: #25d366;
       border: none;
@@ -94,7 +85,6 @@
       cursor: pointer;
       transition: background-color 0.3s;
     }
-
     .chat-input button.recording {
       background-color: red;
     }
@@ -121,28 +111,24 @@
 
   let mediaRecorder;
   let audioChunks = [];
-  let recognition;
-  let transcriptText = "";
   let isRecording = false;
-
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-
-  if (!SpeechRecognition) {
-    alert("Speech recognition is not supported in this browser. Use Chrome desktop or Android.");
-  }
-
-  function cleanTranscript(text) {
-    return text
-      .trim()
-      .replace(/\s+/g, ' ')
-      .replace(/^\w/, c => c.toUpperCase());
-  }
 
   recordBtn.onclick = async () => {
     if (!isRecording) {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        mediaRecorder = new MediaRecorder(stream);
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            sampleRate: 44100,
+            channelCount: 1,
+            noiseSuppression: true,
+            echoCancellation: true
+          }
+        });
+
+        mediaRecorder = new MediaRecorder(stream, {
+          mimeType: 'audio/webm;codecs=opus'
+        });
+
         audioChunks = [];
 
         mediaRecorder.ondataavailable = event => audioChunks.push(event.data);
@@ -159,47 +145,20 @@
           audioEl.src = audioUrl;
           messageEl.appendChild(audioEl);
 
-          const cleanedText = cleanTranscript(transcriptText);
-          if (cleanedText) {
-            const textEl = document.createElement('div');
-            textEl.textContent = "Transcript: " + cleanedText;
-            messageEl.appendChild(textEl);
-          }
-
           messages.appendChild(messageEl);
           messages.scrollTop = messages.scrollHeight;
 
           const formData = new FormData();
           formData.append('file', audioBlob, 'recording.webm');
-          formData.append('transcript', cleanedText || 'No transcript');
 
           fetch(webhookURL, {
             method: 'POST',
             body: formData
-          }).then(res => console.log('✅ Sent')).catch(err => console.error('❌ Webhook Error:', err));
+          }).then(res => console.log('✅ Audio sent')).catch(err => console.error('❌ Webhook Error:', err));
         };
 
         mediaRecorder.start();
-
-        // Speech recognition setup
-        transcriptText = "";
-        recognition = new SpeechRecognition();
-        recognition.lang = 'en-IN';
-        recognition.continuous = false;
-        recognition.interimResults = false;
-        recognition.maxAlternatives = 3;
-
-        recognition.onresult = event => {
-          const bestResult = event.results[0][0].transcript;
-          transcriptText += bestResult;
-          console.log("📝 Transcript:", bestResult);
-        };
-
-        recognition.onerror = e => console.error("Speech Recognition Error:", e.error);
-        recognition.onend = () => console.log("Speech Recognition Ended");
-
-        recognition.start();
-        console.log("🎤 Recording and recognition started");
+        console.log("🎤 Recording started");
 
         isRecording = true;
         recordBtn.classList.add('recording');
@@ -209,7 +168,6 @@
       }
     } else {
       mediaRecorder.stop();
-      recognition.stop();
       isRecording = false;
       recordBtn.classList.remove('recording');
     }
