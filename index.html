@@ -19,8 +19,9 @@
       flex-direction: column;
       background-color: #fff;
       border: 1px solid #ccc;
-      border-radius: 30px; /* rounded edges like a phone */
+      border-radius: 28px;
       overflow: hidden;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
     }
 
     .chat-header {
@@ -115,7 +116,6 @@
 
 <script>
   const webhookURL = 'https://hook.eu1.make.com/y03o41txx4uibrxo03w6o9epmfy69vse';
-
   const recordBtn = document.getElementById('recordBtn');
   const messages = document.getElementById('messages');
 
@@ -124,6 +124,12 @@
   let recognition;
   let transcriptText = "";
   let isRecording = false;
+
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  if (!SpeechRecognition) {
+    alert("Speech recognition is not supported in this browser. Use Chrome desktop or Android.");
+  }
 
   function cleanTranscript(text) {
     return text
@@ -134,69 +140,76 @@
 
   recordBtn.onclick = async () => {
     if (!isRecording) {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorder = new MediaRecorder(stream);
-      audioChunks = [];
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
 
-      mediaRecorder.ondataavailable = event => audioChunks.push(event.data);
+        mediaRecorder.ondataavailable = event => audioChunks.push(event.data);
 
-      mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-        const audioUrl = URL.createObjectURL(audioBlob);
+        mediaRecorder.onstop = () => {
+          const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+          const audioUrl = URL.createObjectURL(audioBlob);
 
-        const messageEl = document.createElement('div');
-        messageEl.className = 'message';
+          const messageEl = document.createElement('div');
+          messageEl.className = 'message';
 
-        const audioEl = document.createElement('audio');
-        audioEl.controls = true;
-        audioEl.src = audioUrl;
-        messageEl.appendChild(audioEl);
+          const audioEl = document.createElement('audio');
+          audioEl.controls = true;
+          audioEl.src = audioUrl;
+          messageEl.appendChild(audioEl);
 
-        const cleanedText = cleanTranscript(transcriptText);
-        if (cleanedText) {
-          const textEl = document.createElement('div');
-          textEl.textContent = "Transcript: " + cleanedText;
-          messageEl.appendChild(textEl);
-        }
+          const cleanedText = cleanTranscript(transcriptText);
+          if (cleanedText) {
+            const textEl = document.createElement('div');
+            textEl.textContent = "Transcript: " + cleanedText;
+            messageEl.appendChild(textEl);
+          }
 
-        messages.appendChild(messageEl);
-        messages.scrollTop = messages.scrollHeight;
+          messages.appendChild(messageEl);
+          messages.scrollTop = messages.scrollHeight;
 
-        const formData = new FormData();
-        formData.append('file', audioBlob, 'recording.webm');
-        formData.append('transcript', cleanedText || 'No transcript');
+          const formData = new FormData();
+          formData.append('file', audioBlob, 'recording.webm');
+          formData.append('transcript', cleanedText || 'No transcript');
 
-        fetch(webhookURL, {
-          method: 'POST',
-          body: formData
-        }).then(res => console.log('Sent')).catch(err => console.error('Error:', err));
-      };
+          fetch(webhookURL, {
+            method: 'POST',
+            body: formData
+          }).then(res => console.log('✅ Sent')).catch(err => console.error('❌ Webhook Error:', err));
+        };
 
-      mediaRecorder.start();
+        mediaRecorder.start();
 
-      transcriptText = "";
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      recognition = new SpeechRecognition();
-      recognition.lang = 'en-IN';
-      recognition.continuous = true; // << important for full recording
-      recognition.interimResults = false;
-      recognition.maxAlternatives = 3;
+        // Speech recognition setup
+        transcriptText = "";
+        recognition = new SpeechRecognition();
+        recognition.lang = 'en-IN';
+        recognition.continuous = false;
+        recognition.interimResults = false;
+        recognition.maxAlternatives = 3;
 
-      recognition.onresult = event => {
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          transcriptText += event.results[i][0].transcript + ' ';
-        }
-        console.log("Transcript so far:", transcriptText);
-      };
+        recognition.onresult = event => {
+          const bestResult = event.results[0][0].transcript;
+          transcriptText += bestResult;
+          console.log("📝 Transcript:", bestResult);
+        };
 
-      recognition.start();
+        recognition.onerror = e => console.error("Speech Recognition Error:", e.error);
+        recognition.onend = () => console.log("Speech Recognition Ended");
 
-      isRecording = true;
-      recordBtn.classList.add('recording');
+        recognition.start();
+        console.log("🎤 Recording and recognition started");
+
+        isRecording = true;
+        recordBtn.classList.add('recording');
+      } catch (err) {
+        console.error("Microphone access error:", err);
+        alert("Please allow microphone access to record.");
+      }
     } else {
       mediaRecorder.stop();
       recognition.stop();
-
       isRecording = false;
       recordBtn.classList.remove('recording');
     }
