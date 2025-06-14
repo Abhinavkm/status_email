@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Voice Chat with Transcript</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background-color: #e5ddd5;
+    }
+
+    .chat-container {
+      max-width: 480px;
+      margin: auto;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background-color: #fff;
+      border: 1px solid #ccc;
+      border-radius: 30px; /* rounded edges like a phone */
+      overflow: hidden;
+    }
+
+    .chat-header {
+      background-color: #075e54;
+      color: white;
+      padding: 15px;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .chat-header img {
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      object-fit: cover;
+      border: 2px solid #fff;
+    }
+
+    .chat-messages {
+      flex: 1;
+      padding: 10px;
+      overflow-y: auto;
+      background-image: url('https://wallpapersok.com/images/high/whatsapp-chat-letters-and-symbols-frohqsll7jrmil09.webp');
+      background-size: contain;
+    }
+
+    .message {
+      background-color: #dcf8c6;
+      padding: 10px;
+      margin: 8px 0;
+      border-radius: 8px 8px 0 8px;
+      max-width: 75%;
+      align-self: flex-end;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+      position: relative;
+    }
+
+    .message audio {
+      display: block;
+      margin-top: 5px;
+    }
+
+    .chat-input {
+      display: flex;
+      align-items: center;
+      padding: 10px;
+      background-color: #f0f0f0;
+      border-top: 1px solid #ccc;
+    }
+
+    .chat-input input[type="text"] {
+      flex: 1;
+      padding: 10px;
+      border-radius: 20px;
+      border: 1px solid #ccc;
+      outline: none;
+      margin-right: 10px;
+    }
+
+    .chat-input button {
+      background-color: #25d366;
+      border: none;
+      color: white;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      font-size: 18px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+
+    .chat-input button.recording {
+      background-color: red;
+    }
+  </style>
+</head>
+<body>
+
+<div class="chat-container">
+  <div class="chat-header">
+    <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRMDnqrZyY74B82cFFLUho2CHq7vZytCa3GpMz_96WkZx4fs5_QmZ4Cm7JssUmrdA3nA8g&usqp=CAU" alt="avatar" />
+    <span>Voice Chat</span>
+  </div>
+  <div class="chat-messages" id="messages"></div>
+  <div class="chat-input">
+    <input type="text" placeholder="Type a message" disabled />
+    <button id="recordBtn">🎤</button>
+  </div>
+</div>
+
+<script>
+  const webhookURL = 'https://hook.eu1.make.com/y03o41txx4uibrxo03w6o9epmfy69vse';
+
+  const recordBtn = document.getElementById('recordBtn');
+  const messages = document.getElementById('messages');
+
+  let mediaRecorder;
+  let audioChunks = [];
+  let recognition;
+  let transcriptText = "";
+  let isRecording = false;
+
+  function cleanTranscript(text) {
+    return text
+      .trim()
+      .replace(/\s+/g, ' ')
+      .replace(/^\w/, c => c.toUpperCase());
+  }
+
+  recordBtn.onclick = async () => {
+    if (!isRecording) {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream);
+      audioChunks = [];
+
+      mediaRecorder.ondataavailable = event => audioChunks.push(event.data);
+
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        const audioUrl = URL.createObjectURL(audioBlob);
+
+        const messageEl = document.createElement('div');
+        messageEl.className = 'message';
+
+        const audioEl = document.createElement('audio');
+        audioEl.controls = true;
+        audioEl.src = audioUrl;
+        messageEl.appendChild(audioEl);
+
+        const cleanedText = cleanTranscript(transcriptText);
+        if (cleanedText) {
+          const textEl = document.createElement('div');
+          textEl.textContent = "Transcript: " + cleanedText;
+          messageEl.appendChild(textEl);
+        }
+
+        messages.appendChild(messageEl);
+        messages.scrollTop = messages.scrollHeight;
+
+        const formData = new FormData();
+        formData.append('file', audioBlob, 'recording.webm');
+        formData.append('transcript', cleanedText || 'No transcript');
+
+        fetch(webhookURL, {
+          method: 'POST',
+          body: formData
+        }).then(res => console.log('Sent')).catch(err => console.error('Error:', err));
+      };
+
+      mediaRecorder.start();
+
+      transcriptText = "";
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      recognition = new SpeechRecognition();
+      recognition.lang = 'en-IN';
+      recognition.continuous = true; // << important for full recording
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 3;
+
+      recognition.onresult = event => {
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          transcriptText += event.results[i][0].transcript + ' ';
+        }
+        console.log("Transcript so far:", transcriptText);
+      };
+
+      recognition.start();
+
+      isRecording = true;
+      recordBtn.classList.add('recording');
+    } else {
+      mediaRecorder.stop();
+      recognition.stop();
+
+      isRecording = false;
+      recordBtn.classList.remove('recording');
+    }
+  };
+</script>
+
+</body>
+</html>
